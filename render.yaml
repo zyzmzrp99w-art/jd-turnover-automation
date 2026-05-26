@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: jd-turnover-automation
+    env: python
+    buildCommand: pip install -e .
+    startCommand: cd src && uvicorn jd_turnover.main:app --host 0.0.0.0 --port $PORT
+    plan: free
