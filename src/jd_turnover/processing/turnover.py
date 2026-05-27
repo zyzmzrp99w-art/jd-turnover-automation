@@ -127,7 +127,10 @@ def match_columns(df: pd.DataFrame) -> dict[str, str]:
             missing.append(f"  - {std}（支持别名：{', '.join(aliases)}）")
 
     if missing:
-        raise ValueError(f"底表缺失必填字段：\n" + "\n".join(missing))
+        raise ValueError(
+            f"底表缺失必填字段：\n" + "\n".join(missing)
+            + f"\n\n当前文件列名：{list(df.columns)}"
+        )
 
     logger.info(f"列名匹配完成, 匹配 {len(col_map)} 个字段")
     return col_map
