@@ -1,10 +1,12 @@
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
+const turnoverDaysInput = document.getElementById("turnoverDays");
 const progress = document.getElementById("progress");
 const result = document.getElementById("result");
 const error = document.getElementById("error");
 
 let currentFilename = "";
+let currentTurnoverDays = 50;
 
 dropZone.addEventListener("click", () => fileInput.click());
 dropZone.addEventListener("dragover", (e) => {
@@ -28,8 +30,12 @@ async function handleFile(file) {
     hideError();
     showProgress();
 
+    const td = parseInt(turnoverDaysInput.value) || 50;
+    currentTurnoverDays = td;
+
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("turnover_days", td);
 
     try {
         const resp = await fetch("/upload", { method: "POST", body: formData });
@@ -54,7 +60,10 @@ document.getElementById("downloadBtn").addEventListener("click", async () => {
         const resp = await fetch("/download", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ filename: currentFilename }),
+            body: JSON.stringify({
+                filename: currentFilename,
+                turnover_days: currentTurnoverDays,
+            }),
         });
         if (!resp.ok) throw new Error("下载失败");
 
