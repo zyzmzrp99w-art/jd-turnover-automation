@@ -87,7 +87,6 @@ REQUIRED_FIELDS = {
     "近14日出库": ["近14日出库商品件数", "近14日出库", "近14天出库", "14天出库", "近14日销量", "14天销量", "近14天销量"],
     "商品名称": ["商品名称", "品名", "商品全称", "商品名", "产品名称"],
     "上级B配送中心名称": ["上级B配送中心名称", "上级配送中心名称"],
-    "配送中心": ["配送中心", "配送中心名称", "配送中心名称（正式）"],
 }
 
 
@@ -158,13 +157,13 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
         if not wh_b or wh_b == "nan":
             continue
 
-        dc_raw = row.get(col_map.get("配送中心", ""), "")
-        dc = str(dc_raw).strip() if pd.notna(dc_raw) else ""
+        # 配送中心：从上级B配送中心名称去掉"补货B"
+        dc = wh_b.replace("补货B", "")
 
         key = (wh_b, sku)
         if key not in groups:
             groups[key] = {
-                "配送中心": "",
+                "配送中心": dc,
                 "7天销售": 0.0,
                 "14天销售": 0.0,
                 "C仓库存": 0.0,
@@ -173,8 +172,6 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
             }
 
         g = groups[key]
-        if not g["配送中心"] and dc and dc != "nan" and dc != "全国":
-            g["配送中心"] = dc
 
         def _f(field: str) -> float:
             val = row.get(col_map.get(field, ""), 0)
@@ -221,8 +218,7 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
         final_replenish = replenish_box * box_spec
         current_turnover = round(total_stock / daily_sales, 2)
 
-        # 配送中心名称：从wh_b提取干净的DC名
-        dc_name = dc if dc else wh_b
+        dc_name = g["配送中心"]
 
         total_rows.append({
             "SKUID": sku,
