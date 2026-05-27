@@ -13,6 +13,12 @@
             <p class="subtitle">上传京东通用版纵版底表, 自动计算补货量并生成采购下单表</p>
         </header>
 
+        <div class="config-bar">
+            <label for="turnoverDays">周转天数要求:</label>
+            <input type="number" id="turnoverDays" value="50" min="1" max="365" class="days-input">
+            <span class="hint">默认 50 天</span>
+        </div>
+
         <div id="dropZone" class="drop-zone">
             <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" hidden>
             <div class="drop-zone-content">
