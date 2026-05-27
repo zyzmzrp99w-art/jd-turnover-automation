@@ -127,9 +127,10 @@ async def update_server(token: str = Form(...)):
         return {"ok": False, "error": "token 错误"}
     project_root = BASE_DIR.parent.parent
     restart_script = (
-        f"cd {project_root} && git pull && "
+        f"cd {project_root} && "
         f"PID=$(pgrep -f 'uvicorn jd_turnover.main') && "
         f"[ -n \"$PID\" ] && kill $PID && sleep 1; "
+        f"git pull 2>/dev/null; "
         f"cd src && nohup python3 -m uvicorn jd_turnover.main:app --host 0.0.0.0 --port 8000 &"
     )
     subprocess.Popen(
