@@ -145,7 +145,17 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
     # 1. 列名匹配
     col_map = match_columns(df)
 
-    # 2. 按 (RDC, SKU) 分组聚合
+    # 2. 构建 RDC → 上级B配送中心名称 映射
+    rdc_to_wh: dict[str, str] = {}
+    for _, row in df.iterrows():
+        rdc_raw = row.get(col_map["RDC"], "")
+        rdc = str(rdc_raw).strip() if pd.notna(rdc_raw) else ""
+        wh_raw = row.get("上级B配送中心名称", "")
+        wh = str(wh_raw).strip() if pd.notna(wh_raw) else ""
+        if rdc and rdc != "nan" and wh and wh != "nan":
+            rdc_to_wh[rdc] = wh
+
+    # 3. 按 (上级B配送中心名称, SKU) 分组聚合
     groups: dict[tuple[str, str], dict] = {}
     for _, row in df.iterrows():
         sku = _clean_sku(row.get(col_map["SKU"], ""))
@@ -157,7 +167,14 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
         if not rdc or rdc == "nan":
             continue
 
-        key = (rdc, sku)
+        # 上游配送中心名称：优先用映射表，其次用RDC本身
+        wh_b = rdc_to_wh.get(rdc, rdc)
+
+        # 只取有上级B配送中心名称对应的数据
+        if not wh_b or wh_b == "nan":
+            continue
+
+        key = (wh_b, sku)
         if key not in groups:
             groups[key] = {
                 "7天销售": 0.0,
@@ -184,11 +201,11 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
 
     logger.info(f"分组聚合完成, 共 {len(groups)} 组")
 
-    # 3. 生成总表-分SKU 和 平台采购下单表
+    # 4. 生成总表-分SKU 和 平台采购下单表
     total_rows = []
     order_rows = []
 
-    for (rdc, sku), g in groups.items():
+    for (wh_b, sku), g in groups.items():
         mapping = SKU_MAPPING.get(sku, {})
         goods_short = mapping.get("商品简称", "")
         series = mapping.get("系列", "")
@@ -200,8 +217,8 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
         stock_b = g["B仓库存"]
         on_way = g["采购未到库"]
 
-        # 配送中心：从RDC去"补货B"、"FDC配送中心"、"配送中心"
-        dc_name = rdc.replace("补货B", "").replace("FDC配送中心", "").replace("配送中心", "")
+        # 配送中心：从上级B配送中心名称去"补货B"
+        dc_name = wh_b.replace("补货B", "")
 
         daily_sales = (sales_7 / 7.0 * 0.5) + (sales_14 / 14.0 * 0.5)
         if daily_sales <= 0:
@@ -216,7 +233,7 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
 
         total_rows.append({
             "SKUID": sku,
-            "上级B配送中心名称": rdc,
+            "上级B配送中心名称": wh_b,
             "配送中心": dc_name,
             "系列": series,
             "商品简称": goods_short,
