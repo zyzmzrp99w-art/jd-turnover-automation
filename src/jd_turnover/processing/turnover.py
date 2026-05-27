@@ -170,6 +170,12 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
         # 上游配送中心名称：优先用映射表，其次用RDC本身
         wh_b = rdc_to_wh.get(rdc, rdc)
 
+        # 排除汇总行（上级B配送中心名称为"全国"的行会重复计算各分仓数据）
+        wh_raw = row.get("上级B配送中心名称", "")
+        wh_direct = str(wh_raw).strip() if pd.notna(wh_raw) else ""
+        if wh_direct == "全国":
+            continue
+
         # 只取有上级B配送中心名称对应的数据
         if not wh_b or wh_b == "nan":
             continue
