@@ -141,7 +141,34 @@ async def update_server(token: str = Form(...)):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    import subprocess
+    try:
+        rev = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=BASE_DIR.parent.parent, text=True
+        ).strip()
+    except Exception:
+        rev = "unknown"
+    return {"status": "ok", "rev": rev}
+
+@app.get("/debug/uploaded")
+async def debug_uploaded():
+    files = list(UPLOAD_DIR.glob("*"))
+    result = []
+    for f in files:
+        if f.suffix.lower() in ALLOWED_EXTENSIONS:
+            try:
+                import pandas as pd
+                df = load_file(f)
+                result.append({
+                    "name": f.name,
+                    "size": f.stat().st_size,
+                    "columns": df.columns.tolist(),
+                    "rows": len(df),
+                })
+            except Exception as e:
+                result.append({"name": f.name, "error": str(e)})
+    return {"files": result}
 
 
 @app.post("/download")
