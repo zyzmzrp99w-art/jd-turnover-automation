@@ -33,6 +33,30 @@ header h1 {
     font-size: 14px;
 }
 
+.config-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: #555;
+}
+
+.days-input {
+    width: 72px;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    text-align: center;
+}
+
+.days-input:focus {
+    outline: none;
+    border-color: #c41230;
+}
+
 .drop-zone {
     border: 2px dashed #ccc;
     border-radius: 12px;
