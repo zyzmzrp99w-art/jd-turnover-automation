@@ -8,7 +8,7 @@ import secrets
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, UploadFile, Request
+from fastapi import FastAPI, File, UploadFile, Request, Form
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -81,7 +81,7 @@ async def index(request: Request):
 
 
 @app.post("/upload")
-async def upload_and_process(file: UploadFile = File(...)):
+async def upload_and_process(file: UploadFile = File(...), turnover_days: int = Form(50)):
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         return {"ok": False, "error": f"不支持的文件格式: {ext}, 仅支持 {ALLOWED_EXTENSIONS}"}
@@ -93,15 +93,15 @@ async def upload_and_process(file: UploadFile = File(...)):
 
     save_path = UPLOAD_DIR / file.filename
     save_path.write_bytes(contents)
-    logger.info(f"文件上传成功: {file.filename} ({size_mb:.1f}MB)")
+    logger.info(f"文件上传成功: {file.filename} ({size_mb:.1f}MB), 周转天数: {turnover_days}")
 
     try:
         df = load_file(save_path)
         df = drop_empty_rows(df)
         df = normalize_columns(df)
-        df_raw, df_total, df_order = process(df)
+        df_raw, df_total, df_order = process(df, turnover_days=turnover_days)
 
-        preview_data = df_total.head(100).to_dict(orient="records")
+        preview_data = df_total.head(10).to_dict(orient="records")
         columns = df_total.columns.tolist()
 
         return {
@@ -127,6 +127,7 @@ async def health():
 async def download_result(request: Request):
     data = await request.json()
     filename = data.get("filename", "")
+    turnover_days = data.get("turnover_days", 50)
 
     save_path = UPLOAD_DIR / filename
     if not save_path.exists():
@@ -136,7 +137,7 @@ async def download_result(request: Request):
         df = load_file(save_path)
         df = drop_empty_rows(df)
         df = normalize_columns(df)
-        df_raw, df_total, df_order = process(df)
+        df_raw, df_total, df_order = process(df, turnover_days=turnover_days)
 
         excel_bytes = to_excel_bytes(df_raw, df_total, df_order)
 
