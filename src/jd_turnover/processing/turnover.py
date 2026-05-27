@@ -3,7 +3,8 @@
 v5 核心逻辑：
 - 按(上级B配送中心名称, SKU)分组聚合
 - 日销7+14 = 近7日/7×50% + 近14日/14×50%
-- 补货数量 = floor(日销×30 - 总库存)
+- B仓配送中心(含"补货B")周转天数=50, 普通仓=30
+- 补货数量 = 日销×周转天数 - (C仓+B仓+采购未到库)
 - 补货箱数 = ceil(max(补货数量, 0) / 箱规)
 - 修正补货数量 = 补货箱数 × 箱规
 """
@@ -65,10 +66,6 @@ SKU_MAPPING = {
 }
 
 # ============================================================
-# 固定参数
-# ============================================================
-TURNOVER_DAYS = 30
-
 # 总表-分SKU 固定18列列名
 TOTAL_SHEET_HEADERS = [
     "SKUID", "上级B配送中心名称", "配送中心", "系列", "商品简称",
@@ -154,6 +151,9 @@ def process(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
 
         wh_b_raw = row.get(col_map["上级B配送中心名称"], "")
         wh_b = str(wh_b_raw).strip() if pd.notna(wh_b_raw) else ""
+        if not wh_b or wh_b == "nan":
+            continue
+
         dc_raw = row.get(col_map.get("配送中心", ""), "")
         dc = str(dc_raw).strip() if pd.notna(dc_raw) else ""
 
@@ -169,7 +169,7 @@ def process(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
             }
 
         g = groups[key]
-        if not g["配送中心"] and dc and dc != "nan":
+        if not g["配送中心"] and dc and dc != "nan" and dc != "全国":
             g["配送中心"] = dc
 
         def _f(field: str) -> float:
@@ -208,17 +208,23 @@ def process(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
         if daily_sales <= 0:
             daily_sales = 0.001
 
+        # B仓配送中心周转50天, 普通仓30天
+        turnover_days_req = 50 if "补货B" in wh_b else 30
+
         total_stock = stock_c + stock_b + on_way
-        replenish_raw = daily_sales * TURNOVER_DAYS - total_stock
+        replenish_raw = daily_sales * turnover_days_req - total_stock
         replenish_num = max(0, math.floor(replenish_raw))
         replenish_box = math.ceil(replenish_num / box_spec) if replenish_num > 0 else 0
         final_replenish = replenish_box * box_spec
-        turnover_days = round(total_stock / daily_sales, 2)
+        current_turnover = round(total_stock / daily_sales, 2)
+
+        # 配送中心名称：从wh_b提取干净的DC名
+        dc_name = dc if dc else wh_b
 
         total_rows.append({
             "SKUID": sku,
             "上级B配送中心名称": wh_b,
-            "配送中心": dc,
+            "配送中心": dc_name,
             "系列": series,
             "商品简称": goods_short,
             "码数排序": "",
@@ -232,20 +238,20 @@ def process(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
             "补货数量": round(replenish_raw, 2),
             "补货箱数": replenish_box,
             "修正补货数量": final_replenish,
-            "实时周转天数": turnover_days,
-            "周转天数要求": TURNOVER_DAYS,
+            "实时周转天数": current_turnover,
+            "周转天数要求": turnover_days_req,
         })
 
         if final_replenish > 0:
             order_rows.append({
                 "SKU": sku,
                 "采购需求数量": final_replenish,
-                "配送中心": dc if dc else wh_b,
+                "配送中心": dc_name,
                 "商品全称": goods_short,
             })
 
     df_total = pd.DataFrame(total_rows, columns=TOTAL_SHEET_HEADERS) if total_rows else pd.DataFrame(columns=TOTAL_SHEET_HEADERS)
     df_order = pd.DataFrame(order_rows, columns=ORDER_SHEET_HEADERS) if order_rows else pd.DataFrame(columns=ORDER_SHEET_HEADERS)
 
-    logger.info(f"总表-分SKU: {len(df_total)} 行, 平台采购下单表: {len(df_order)} 行")
+    logger.info(f"底表新: {len(df)} 行, 总表-分SKU: {len(df_total)} 行, 平台采购下单表: {len(df_order)} 行")
     return df, df_total, df_order
