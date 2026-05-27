@@ -5,6 +5,7 @@
 
 import os
 import secrets
+import subprocess
 from pathlib import Path
 from urllib.parse import quote
 
@@ -117,6 +118,20 @@ async def upload_and_process(file: UploadFile = File(...), turnover_days: int = 
         logger.exception("处理文件失败")
         return {"ok": False, "error": str(e)}
 
+
+UPDATE_TOKEN = os.environ.get("JD_UPDATE_TOKEN", "jd-auto-update")
+
+@app.post("/update")
+async def update_server(token: str = Form(...)):
+    if token != UPDATE_TOKEN:
+        return {"ok": False, "error": "token 错误"}
+    project_root = BASE_DIR.parent.parent
+    subprocess.Popen(
+        f"cd {project_root} && git pull && pkill -f uvicorn && sleep 1 && "
+        f"cd src && nohup python3 -m uvicorn jd_turnover.main:app --host 0.0.0.0 --port 8000 &",
+        shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return {"ok": True, "msg": "更新中, 请稍后刷新"}
 
 @app.get("/health")
 async def health():
