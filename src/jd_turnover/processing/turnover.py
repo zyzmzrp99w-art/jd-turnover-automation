@@ -86,7 +86,7 @@ REQUIRED_FIELDS = {
     "近7日出库": ["近7日出库商品件数", "近7日出库", "近7天出库", "7天出库", "近7日销量", "7天销量", "近7天销量"],
     "近14日出库": ["近14日出库商品件数", "近14日出库", "近14天出库", "14天出库", "近14日销量", "14天销量", "近14天销量"],
     "商品名称": ["商品名称", "品名", "商品全称", "商品名", "产品名称"],
-    "上级B配送中心名称": ["上级B配送中心名称", "上级配送中心名称"],
+    "RDC": ["RDC", "rdc", "Rdc"],
 }
 
 
@@ -145,25 +145,21 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
     # 1. 列名匹配
     col_map = match_columns(df)
 
-    # 2. 按 (上级B配送中心名称, SKU) 分组聚合
+    # 2. 按 (RDC, SKU) 分组聚合
     groups: dict[tuple[str, str], dict] = {}
     for _, row in df.iterrows():
         sku = _clean_sku(row.get(col_map["SKU"], ""))
         if not sku or sku == "nan":
             continue
 
-        wh_b_raw = row.get(col_map["上级B配送中心名称"], "")
-        wh_b = str(wh_b_raw).strip() if pd.notna(wh_b_raw) else ""
-        if not wh_b or wh_b == "nan":
+        rdc_raw = row.get(col_map["RDC"], "")
+        rdc = str(rdc_raw).strip() if pd.notna(rdc_raw) else ""
+        if not rdc or rdc == "nan":
             continue
 
-        # 配送中心：从上级B配送中心名称去掉"补货B"
-        dc = wh_b.replace("补货B", "")
-
-        key = (wh_b, sku)
+        key = (rdc, sku)
         if key not in groups:
             groups[key] = {
-                "配送中心": dc,
                 "7天销售": 0.0,
                 "14天销售": 0.0,
                 "C仓库存": 0.0,
@@ -192,7 +188,7 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
     total_rows = []
     order_rows = []
 
-    for (wh_b, sku), g in groups.items():
+    for (rdc, sku), g in groups.items():
         mapping = SKU_MAPPING.get(sku, {})
         goods_short = mapping.get("商品简称", "")
         series = mapping.get("系列", "")
@@ -203,26 +199,24 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
         stock_c = g["C仓库存"]
         stock_b = g["B仓库存"]
         on_way = g["采购未到库"]
-        dc = g["配送中心"]
+
+        # 配送中心：从RDC去"补货B"、"FDC配送中心"、"配送中心"
+        dc_name = rdc.replace("补货B", "").replace("FDC配送中心", "").replace("配送中心", "")
 
         daily_sales = (sales_7 / 7.0 * 0.5) + (sales_14 / 14.0 * 0.5)
         if daily_sales <= 0:
             daily_sales = 0.001
 
-        turnover_days_req = turnover_days
-
         total_stock = stock_c + stock_b + on_way
-        replenish_raw = daily_sales * turnover_days_req - total_stock
+        replenish_raw = daily_sales * turnover_days - total_stock
         replenish_num = max(0, math.floor(replenish_raw))
         replenish_box = math.ceil(replenish_num / box_spec) if replenish_num > 0 else 0
         final_replenish = replenish_box * box_spec
         current_turnover = round(total_stock / daily_sales, 2)
 
-        dc_name = g["配送中心"]
-
         total_rows.append({
             "SKUID": sku,
-            "上级B配送中心名称": wh_b,
+            "上级B配送中心名称": rdc,
             "配送中心": dc_name,
             "系列": series,
             "商品简称": goods_short,
@@ -238,7 +232,7 @@ def process(df: pd.DataFrame, turnover_days: int = 50) -> tuple[pd.DataFrame, pd
             "补货箱数": replenish_box,
             "修正补货数量": final_replenish,
             "实时周转天数": current_turnover,
-            "周转天数要求": turnover_days_req,
+            "周转天数要求": turnover_days,
         })
 
         if final_replenish > 0:
